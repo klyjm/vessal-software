@@ -1,6 +1,7 @@
 import sys
 import os
 import PySide2
+
 import time
 # # from PyQt5.QtWidgets import QApplication, QPushButton, QLabel
 # # from PyQt5.QtCore import pyqtSlot
@@ -68,6 +69,9 @@ import vtk
 from PySide2.QtWidgets import QMainWindow, QPushButton, QFrame, QVBoxLayout, QHBoxLayout, QFileDialog, QApplication, QMessageBox, QLineEdit, QLabel
 from PySide2.QtCore import Slot, QDir, Qt
 from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+from vtk.util import numpy_support
+from vesselfit import capture_mouse
+
 
 
 class MainWindow(QMainWindow):
@@ -77,28 +81,33 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("股浅动脉自动提取")
         self.setMinimumSize(800, 600)
 
-        self.button = QPushButton("打开文件夹")
-        self.button.clicked.connect(self.btnclicked)
+        self.open_directory_button = QPushButton("打开文件夹")
+        self.open_directory_button.clicked.connect(self.open_directory_button_clicked)
         self.frame = QFrame()
 
-        self.vl = QVBoxLayout()
-        self.hl = QHBoxLayout()
-        self.pathtext = QLineEdit(self)
+        self.main_layout = QVBoxLayout()
+        self.path_layout = QHBoxLayout()
+        self.path_edit = QLineEdit(self)
         # self.pathtext.setMaximumHeight(30)
-        self.hl.addWidget(self.pathtext)
-        self.hl.addWidget(self.button)
+        self.path_layout.addWidget(self.path_edit)
+        self.path_layout.addWidget(self.open_directory_button)
         self.vtkWidget = QVTKRenderWindowInteractor(self.frame)
-        self.vl.addLayout(self.hl)
+        self.main_layout.addLayout(self.path_layout)
         self.slice_num_label = QLabel(self)
         self.slice_num_label.setAlignment(Qt.AlignCenter)
         self.imageviewer = vtk.vtkImageViewer2()
         label_font = self.slice_num_label.font()
         label_font.setPointSize(20)
         self.slice_num_label.setFont(label_font)
-        self.vl.addWidget(self.slice_num_label)
-        self.vl.addWidget(self.vtkWidget)
-        self.LastPickedActor = None
-        self.LastPickedProperty = vtk.vtkProperty()
+        self.button_layout = QHBoxLayout()
+        self.non_occluded_button = QPushButton("选取非闭塞段端点")
+        self.non_occluded_button.clicked.connect(self.non_occluded_button_clicked)
+        self.button_layout.addWidget(self.non_occluded_button)
+        self.main_layout.addWidget(self.slice_num_label)
+        self.main_layout.addWidget(self.vtkWidget)
+        self.main_layout.addLayout(self.button_layout)
+        # self.LastPickedActor = None
+        # self.LastPickedProperty = vtk.vtkProperty()
 
         self.dicomreader = vtk.vtkDICOMImageReader()
         self.ren = vtk.vtkRenderer()
@@ -106,14 +115,14 @@ class MainWindow(QMainWindow):
         self.iren = self.vtkWidget.GetRenderWindow().GetInteractor()
         self.actor = vtk.vtkImageActor()
         self.ren.ResetCamera()
-        self.frame.setLayout(self.vl)
+        self.frame.setLayout(self.main_layout)
         self.setCentralWidget(self.frame)
 
         self.show()
         self.iren.Initialize()
 
     @Slot()
-    def btnclicked(self):
+    def open_directory_button_clicked(self):
         dirname = QFileDialog.getExistingDirectory(self, "DICOM文件夹", '\home',
                                                              QFileDialog.ShowDirsOnly)
         while len(dirname) > 0:
@@ -130,7 +139,7 @@ class MainWindow(QMainWindow):
                     break
             else:
                 break
-        self.pathtext.setText(dirname)
+        self.path_edit.setText(dirname)
         self.dicomreader.SetDirectoryName(dirname)
         self.imageviewer.SetInputConnection(self.dicomreader.GetOutputPort())
         self.imageviewer.SetupInteractor(self.iren)
@@ -158,15 +167,21 @@ class MainWindow(QMainWindow):
 
     def left_pressed(self, obj, ev):
         clickpos = self.iren.GetEventPosition()
-        picker = vtk.vtkPointPicker()
-        picker.Pick(clickpos[0], clickpos[1], 0, self.ren)
-        self.NewPickedActor = picker.GetActor()
-        if self.NewPickedActor:
-            if self.LastPickedActor:
-                self.LastPickedActor.GetProperty.DeepCopy(self.LastPickedProperty)
-            self.LastPickedProperty.DeepCopy(self.NewPickedActor.GetProperty())
-            self.NewPickedActor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor('Red'))
-            self.LastPickedActor = self.NewPickedActor
+        # picker = vtk.vtkPointPicker()
+        # picker.Pick(clickpos[0], clickpos[1], 0, self.ren)
+        # self.NewPickedActor = picker.GetActor()
+        # if self.NewPickedActor:
+        #     if self.LastPickedActor:
+        #         self.LastPickedActor.GetProperty.DeepCopy(self.LastPickedProperty)
+        #     self.LastPickedProperty.DeepCopy(self.NewPickedActor.GetProperty())
+        #     self.NewPickedActor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor('Red'))
+        #     self.LastPickedActor = self.NewPickedActor
+
+    def non_occluded_button_clicked(self):
+        image_data = numpy_support.vtk_to_numpy(self.dicomreader.GetOutput().GetPointData().GetScalars())
+        capture_mouse(image_data)
+
+
 
 
 
