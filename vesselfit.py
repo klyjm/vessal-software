@@ -6,6 +6,7 @@ import numpy as np
 import vtk
 from vtk.util import numpy_support
 from interp import interp1
+import copy
 
 seedpt = None
 seedpt_list = []
@@ -15,7 +16,13 @@ flag = False
 seed_slice = 0
 
 
-def slice_seg_contours(img, label, planes='t', Manualwin=True):
+def on_trace_bar_changed(args):
+    pass
+
+def slice_seg_contours(image_data, numpy_label, planes='t', Manualwin=True):
+    img = sitk.GetImageFromArray(image_data.astype(np.uint8))
+    label = sitk.GetImageFromArray(np.uint8(numpy_label.transpose(2, 1, 0)))
+    label.CopyInformation(img)
     h, w, s = img.GetSize()
     min_max_filter = sitk.MinimumMaximumImageFilter()
     min_max_filter.Execute(img)
@@ -92,7 +99,8 @@ def slice_show(img, win_max=400, win_min=-200):
 
 
 
-def display3d(img, label):
+def display3d(image_data, label):
+    img = sitk.GetImageFromArray(image_data)
     d, w, h = label.shape
     dicom_images = vtk.vtkImageImport()
     dicom_images.CopyImportVoidPointer(label.tostring(), len(label.tostring()))
@@ -156,13 +164,13 @@ def sort2(s):
     return s[2]
 
 def get_vessel(window):
-    points = window.seedpt3d_list
-    numpy_label = window.numpy_label
-    dim = window.dim
+    points = copy.deepcopy(window.end_points)
+    numpy_label = copy.deepcopy(window.numpy_label)
+    dim = copy.deepcopy(window.dim)
     image = window.dicomreader.GetOutput()
-    if len(points) > 2:
-        sourcepoints = []
-        targetpoints = []
+    sourcepoints = []
+    targetpoints = []
+    if len(points) >= 2:
         for i in range(len(points)):
             if i % 2 == 0:
                 sourcepoints.append(points[i])

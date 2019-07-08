@@ -9,7 +9,7 @@ from PySide2.QtWidgets import QMainWindow, QPushButton, QFrame, QVBoxLayout, QHB
 from PySide2.QtCore import Slot, QDir, Qt
 from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtk.util import numpy_support
-from vesselfit import get_vessel
+from vesselfit import get_vessel, display3d, slice_seg_contours
 import SimpleITK as sitk
 import cv2 as cv
 import numpy as np
@@ -37,7 +37,6 @@ class MainWindow(QMainWindow):
         ###VTK显示控件###
         self.frame = QFrame()
         self.vtkWidget = QVTKRenderWindowInteractor(self.frame)
-        self.main_layout.addLayout(self.path_layout)
         self.imageviewer = vtk.vtkImageViewer2()
         ###选取非闭塞段端点按钮###
         self.non_occluded_button = QPushButton("选取非闭塞段端点")
@@ -45,12 +44,20 @@ class MainWindow(QMainWindow):
         self.non_occluded_button.setEnabled(False)
         ###选取闭塞段控制点按钮###
         self.occluded_button = QPushButton("选取闭塞段控制点")
-        self.occluded_button.clicked.connect()
+        self.occluded_button.clicked.connect(self.occluded_button_clicked)
         self.occluded_button.setEnabled(False)
         ###提取血管按钮###
         self.get_vessel_button = QPushButton("提取血管")
-        self.get_vessel_button.clicked.connect()
+        self.get_vessel_button.clicked.connect(self.get_vessel_button_clicked)
         self.get_vessel_button.setEnabled(False)
+        ###结果展示按钮###
+        self.show_result_button = QPushButton("显示提取结果")
+        self.show_result_button.clicked.connect(self.show_result_button_clicked)
+        self.show_result_button.setVisible(False)
+        ###patch保存按钮###
+        self.save_patch_button = QPushButton("保存patch")
+        self.save_patch_button.clicked.connect()
+        self.save_patch_button.setVisible(False)
         ###滑块###
         self.sliber = QSlider()
         self.sliber.setVisible(False)
@@ -60,12 +67,16 @@ class MainWindow(QMainWindow):
         self.path_layout = QHBoxLayout()
         self.path_layout.addWidget(self.path_edit)
         self.path_layout.addWidget(self.open_directory_button)
-        ###按钮布局###
+        ###功能按钮布局###
         self.button_layout = QHBoxLayout()
         self.button_layout.addWidget(self.non_occluded_button)
         self.button_layout.addWidget(self.occluded_button)
+        self.button_layout.addWidget(self.get_vessel_button)
+        self.button_layout.addWidget(self.show_result_button)
+        self.button_layout.addWidget(self.save_patch_button)
         ###主布局###
         self.main_layout = QVBoxLayout()
+        self.main_layout.addLayout(self.path_layout)
         self.main_layout.addWidget(self.slice_num_label)
         self.main_layout.addWidget(self.sliber)
         self.main_layout.addWidget(self.vtkWidget)
@@ -88,9 +99,11 @@ class MainWindow(QMainWindow):
         self.seedpt_list = []
         self.seed_slice = 0
         self.seedpt3d_list = []
+        self.end_points = []
         self.flag = False
         self.center = []
         self.dim = 0
+        self.image_data = None
         self.numpy_label = np.zeros(self.dim, dtype=np.float32)
 
     ###打开文件夹按钮功能函数###
@@ -112,7 +125,7 @@ class MainWindow(QMainWindow):
                     break
             else:
                 break
-        if len(dirname) > 0
+        if len(dirname) > 0:
             self.path_edit.setText(dirname)
             self.dicomreader.SetDirectoryName(dirname)
             self.imageviewer.SetInputConnection(self.dicomreader.GetOutputPort())
@@ -134,10 +147,15 @@ class MainWindow(QMainWindow):
             self.sliber.setMinimum(self.imageviewer.GetSliceMin())
             self.sliber.setValue(self.imageviewer.GetSlice())
             self.dim = self.dicomreader.GetOutput().GetDimensions()
+            self.image_data = numpy_support.vtk_to_numpy(self.dicomreader.GetOutput().GetPointData().GetScalars())
+            self.image_data = self.image_data.reshape(self.dim[2], self.dim[1], self.dim[0])
+            self.image_data = np.flip(np.flip(self.image_data, axis=1), axis=0)
             self.numpy_label = np.zeros(self.dim, dtype=np.float32)
             self.sliber.setVisible(True)
             self.non_occluded_button.setEnabled(True)
             self.occluded_button.setEnabled(True)
+            self.show_result_button.setVisible(False)
+            self.save_patch_button.setVisible(False)
 
     ###滚轮向上滚动功能函数###
     def last_slice(self, obj, ev):
@@ -169,14 +187,12 @@ class MainWindow(QMainWindow):
     ###非闭塞段端点按钮功能函数###
     @Slot()
     def non_occluded_button_clicked(self):
-        image_data = numpy_support.vtk_to_numpy(self.dicomreader.GetOutput().GetPointData().GetScalars())
-        dim = self.dicomreader.GetOutput().GetDimensions()
-        image_data = image_data.reshape(dim[2], dim[1], dim[0])
-        image_data = np.flip(np.flip(image_data, axis=1), axis=0)
         self.flag = False
-        self.capture_mouse(image_data)
-        if len(self.seedpt3d_list) > 2:
+        self.capture_mouse(self.image_data)
+        if len(self.seedpt3d_list) >= 2:
             self.get_vessel_button.setEnabled(True)
+            self.show_result_button.setVisible(False)
+            self.save_patch_button.setVisible(False)
 
     ###滑块功能函数###
     @Slot()
@@ -234,7 +250,7 @@ class MainWindow(QMainWindow):
                     self.seedpt = None
                     print('{}: ({}, {}, {})'.format(seedname, x, y, slice_num))
                 if not self.flag:
-                    return self.seedpt3d_list
+                    self.end_points = self.seedpt3d_list
                 break
 
             elif 0xFF & cv.waitKey(10) == ord('r'):
@@ -249,8 +265,9 @@ class MainWindow(QMainWindow):
             self.seedpt_list.append(list(self.seedpt))
             self.seedpt3d_list.append([x, y, self.seed_slice])
             if self.flag:
-                centerz = [temp[2] for temp in self.center]
-                if self.seed_slice not in centerz:
+                center_z = [temp[2] for temp in self.center]
+                end_points_z = [temp[2] for temp in self.end_points]
+                if self.seed_slice not in center_z and self.seed_slice not in end_points_z:
                     self.center.append([x, y, self.seed_slice])
                     print(self.center)
             else:
@@ -267,17 +284,28 @@ class MainWindow(QMainWindow):
 
     ###闭塞段控制点按钮功能函数###
     def occluded_button_clicked(self):
-        image_data = numpy_support.vtk_to_numpy(self.dicomreader.GetOutput().GetPointData().GetScalars())
-        image_data = image_data.reshape(dim[2], dim[1], dim[0])
-        image_data = np.flip(np.flip(image_data, axis=1), axis=0)
         self.flag = True
-        self.capture_mouse(image_data)
+        self.capture_mouse(self.image_data)
         if len(self.center) > 2:
             self.get_vessel_button.setEnabled(True)
+            self.show_result_button.setVisible(False)
+            self.save_patch_button.setVisible(False)
 
+    ###提取血管按钮功能函数###
     def get_vessel_button_clicked(self):
+        print(self.end_points)
         self.numpy_label = get_vessel(self)
+        self.show_result_button.setVisible(True)
+        self.save_patch_button.setVisible(True)
 
+
+    ###结果展示按钮功能函数###
+    def show_result_button_clicked(self):
+        display3d(self.image_data, self.numpy_label.astype(np.uint8))
+        slice_seg_contours(self.image_data, self.numpy_label)
+
+    ###patch保存按钮功能函数###
+    def save_patch_button_clicked(self):
 
 
 if __name__ == "__main__":
