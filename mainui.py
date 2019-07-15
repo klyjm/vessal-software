@@ -397,17 +397,21 @@ class MainWindow(QMainWindow):
                 end_points_z = [temp[2] for temp in self.end_points]
                 if self.seed_slice not in center_z and self.seed_slice not in end_points_z:
                     self.center.append([x, y, self.seed_slice])
+                    self.info_browser.insertPlainText(self.center)
                     print(self.center)
             else:
+                self.info_browser.insertPlainText(self.seedpt3d_list)
                 print(self.seedpt3d_list)
 
         elif event == cv.EVENT_RBUTTONDOWN:
             if self.flag and self.center.__len__() != 0:
                     self.center.pop(-1)
+                    self.info_browser.insertPlainText(self.center)
                     print(self.center)
             if self.seedpt_list.__len__() != 0:
                 self.seedpt_list.pop(-1)
                 self.seedpt3d_list.pop(-1)
+                self.info_browser.insertPlainText(self.seedpt3d_list)
                 print(self.seedpt3d_list)
 
     ###闭塞段控制点按钮功能函数###

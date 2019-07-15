@@ -61,7 +61,8 @@ class ImageClassifier:
 
         tsf = _get_transform(config)
 
-        self.device = torch_device("cuda" if torch_cuda.is_available() else "cpu")
+        # self.device = torch_device("cuda" if torch_cuda.is_available() else "cpu")
+        self.device = torch_device("cpu")
         self.model = model.to(self.device)
         self.model.eval()
         self.transforms = tsf
