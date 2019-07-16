@@ -171,7 +171,6 @@ class MainWindow(QMainWindow):
         # self.frame_1.setLayout(self.main_layout)
         # self.setCentralWidget(self.frame_1)
 
-        self.show()
         self.iren.Initialize()
         self.iren_1.Initialize()
         self.dir_name = None
@@ -194,6 +193,7 @@ class MainWindow(QMainWindow):
         self.label_all = []
         self.conf_all = []
         self.type_flag = False
+        self.show()
 
     ###打开文件夹按钮功能函数###
     @Slot()
@@ -317,6 +317,22 @@ class MainWindow(QMainWindow):
             self.show_3D_result_button.setVisible(False)
             self.save_patch_button.setVisible(False)
             self.patch_flag = False
+            sourcepoints = []
+            targetpoints = []
+            for i in range(len(self.seedpt3d_list)):
+                if i % 2 == 0:
+                    sourcepoints.append(self.seedpt3d_list[i])
+                else:
+                    if self.seedpt3d_list[i][2] < self.seedpt3d_list[i - 1][2]:
+                        targetpoints.append(self.seedpt3d_list[i - 1])
+                        sourcepoints[-1] = self.seedpt3d_list[i]
+                    else:
+                        targetpoints.append(self.seedpt3d_list[i])
+            for i in range(len(sourcepoints) - 1):
+                deltaz = sourcepoints[i + 1][2] - targetpoints[i][2]
+                if deltaz > 20:
+                    self.info_browser.insertPlainText("建议在{}和{}间选取{}个控制点\n".format(targetpoints[i][2], sourcepoints[i + 1][2], int(deltaz / 20)))
+
 
     ###滑块功能函数###
     @Slot()
@@ -353,9 +369,10 @@ class MainWindow(QMainWindow):
 
         h, w, s = image_data.shape
         window_name = 'Please choose the seed point of {}'.format(seedname)
-        cv.namedWindow(window_name, cv.WINDOW_GUI_NORMAL)
+        cv.namedWindow(window_name, cv.WINDOW_NORMAL)
         cv.createTrackbar('Slice', window_name, 0, s - 1, self.on_trace_bar_changed)
         cv.setMouseCallback(window_name, self.mouse_clip)
+        cv.resizeWindow('Please choose the seed point of {}', 720, 720)
         cv.imshow(window_name, image_data[:, :, 0])
 
         while True:
@@ -397,21 +414,21 @@ class MainWindow(QMainWindow):
                 end_points_z = [temp[2] for temp in self.end_points]
                 if self.seed_slice not in center_z and self.seed_slice not in end_points_z:
                     self.center.append([x, y, self.seed_slice])
-                    self.info_browser.insertPlainText(self.center)
+                    self.info_browser.insertPlainText(str(self.center) + "\n")
                     print(self.center)
             else:
-                self.info_browser.insertPlainText(self.seedpt3d_list)
+                self.info_browser.insertPlainText(str(self.seedpt3d_list) + "\n")
                 print(self.seedpt3d_list)
 
         elif event == cv.EVENT_RBUTTONDOWN:
             if self.flag and self.center.__len__() != 0:
                     self.center.pop(-1)
-                    self.info_browser.insertPlainText(self.center)
+                    self.info_browser.insertPlainText(str(self.center) + "\n")
                     print(self.center)
             if self.seedpt_list.__len__() != 0:
                 self.seedpt_list.pop(-1)
                 self.seedpt3d_list.pop(-1)
-                self.info_browser.insertPlainText(self.seedpt3d_list)
+                self.info_browser.insertPlainText(str(self.seedpt3d_list) + "\n")
                 print(self.seedpt3d_list)
 
     ###闭塞段控制点按钮功能函数###
@@ -629,4 +646,4 @@ if __name__ == "__main__":
     window = MainWindow()
 
     sys.exit(app.exec_())
-    exec()
+    exit()

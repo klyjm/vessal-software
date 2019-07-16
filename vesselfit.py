@@ -21,6 +21,7 @@ def get_vessel(window):
     sourcepoints = []
     targetpoints = []
     if len(points) >= 2:
+        points.sort(key=sort2)
         for i in range(len(points)):
             if i % 2 == 0:
                 sourcepoints.append(points[i])

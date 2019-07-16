@@ -4,10 +4,10 @@ block_cipher = None
 
 
 a = Analysis(['mainui.py'],
-             pathex=['C:\\Users\\klyjm\\PycharmProjects\\untitled1'],
+             pathex=['C:\\Users\\klyjm\\PycharmProjects\\vessal-software'],
              binaries=[],
              datas=[],
-             hiddenimports=['torchvision', 'torch'],
+             hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
              excludes=[],
@@ -26,7 +26,7 @@ exe = EXE(pyz,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
-          console=True )
+          console=False )
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,
