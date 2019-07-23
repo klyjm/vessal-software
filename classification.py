@@ -53,7 +53,7 @@ class ImageClassifier:
         self.model_path = os.path.join(path, 'model_best.pth')
 
         config = json.load(open(self.config_path))
-        checkpoint = torch_load(self.model_path)
+        checkpoint = torch_load(self.model_path, map_location='cpu')
         m_name, sd, self.classes = _get_model_att(checkpoint)
 
         model = vgg11_bn(self.classes, pretrained=False)

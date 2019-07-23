@@ -48,11 +48,19 @@ class MainWindow(QMainWindow):
         ###dicom-VTK显示控件###
         self.frame = QWidget(self)
         self.vtkWidget = QVTKRenderWindowInteractor(self.frame)
+        self.vtkWidget.GlobalWarningDisplayOff()
         self.vtkWidget.setMinimumSize(512, 512)
         self.imageviewer = vtk.vtkImageViewer2()
         self.ren = vtk.vtkRenderer()
         self.vtkWidget.GetRenderWindow().AddRenderer(self.ren)
         self.iren = self.vtkWidget.GetRenderWindow().GetInteractor()
+        ###灰度值显示标签###
+        self.value_name_label = QLabel("灰度值：")
+        self.value_name_label.setFont(label_font)
+        self.value_name_label.setFixedHeight(30)
+        self.value_label = QLabel("无")
+        self.value_label.setFont(label_font)
+        self.value_label.setFixedHeight(30)
         ###分型结果显示标签###
         self.type_name_label = QLabel("分型结果")
         self.type_name_label.setFont(label_font)
@@ -63,6 +71,7 @@ class MainWindow(QMainWindow):
         ###patch-VTK显示控件###
         self.frame_1 = QFrame()
         self.patch_viewer = QVTKRenderWindowInteractor(self.frame)
+        self.patch_viewer.GlobalWarningDisplayOff()
         self.patch_viewer.setFixedSize(256, 256)
         self.imageviewer_1 = vtk.vtkImageViewer2()
         self.ren_1 = vtk.vtkRenderer()
@@ -132,8 +141,13 @@ class MainWindow(QMainWindow):
         self.select_leg_layout = QHBoxLayout()
         self.select_leg_layout.addWidget(self.left_button)
         self.select_leg_layout.addWidget(self.right_button)
+        ###灰度值标签布局###
+        self.value_layout = QHBoxLayout()
+        self.value_layout.addWidget(self.value_name_label)
+        self.value_layout.addWidget(self.value_label)
         ###patch分型显示布局###
         self.patch_type_layout = QVBoxLayout()
+        self.patch_type_layout.addLayout(self.value_layout)
         self.patch_type_layout.addLayout(self.type_label_layout)
         self.patch_type_layout.addWidget(self.patch_viewer)
         self.patch_type_layout.addLayout(self.select_leg_layout)
@@ -174,6 +188,13 @@ class MainWindow(QMainWindow):
         self.iren.Initialize()
         self.iren_1.Initialize()
         self.dir_name = None
+        self.spacing = []
+        self.select_flag = False
+        self.points = vtk.vtkPoints()
+        self.points.SetNumberOfPoints(1)
+        self.mapper = vtk.vtkPolyDataMapper2D()
+        self.pd = vtk.vtkPolyData()
+        self.actor = vtk.vtkActor2D()
         self.seedname = 'right leg'
         self.seedpt = None
         self.seedpt_list = []
@@ -226,6 +247,7 @@ class MainWindow(QMainWindow):
             self.iren.RemoveObservers('MouseWheelBackwardEvent')
             self.iren.RemoveObservers('MouseWheelForwardEvent')
             self.iren.AddObserver('LeftButtonPressEvent', self.left_pressed)
+            self.iren.AddObserver('MouseMoveEvent', self.mouse_move)
             self.iren.AddObserver('MouseWheelBackwardEvent', self.last_slice)
             self.iren.AddObserver('MouseWheelForwardEvent', self.next_slice)
             self.dicomreader.Update()
@@ -241,6 +263,7 @@ class MainWindow(QMainWindow):
             self.sliber.setMinimum(self.imageviewer.GetSliceMin())
             self.sliber.setValue(self.imageviewer.GetSlice())
             self.dim = self.dicomreader.GetOutput().GetDimensions()
+            self.spacing = self.dicomreader.GetOutput().GetSpacing()
             self.image_data = numpy_support.vtk_to_numpy(self.dicomreader.GetOutput().GetPointData().GetScalars())
             self.image_data = self.image_data.reshape(self.dim[2], self.dim[1], self.dim[0])
             self.image_data = np.flip(np.flip(self.image_data, axis=1), axis=0)
@@ -282,11 +305,40 @@ class MainWindow(QMainWindow):
         self.slice_num_label.setText(str(self.imageviewer.GetSlice()))
         self.sliber.setValue(slice_number + 1)
 
+    def mouse_move(self, obj, ev):
+        position = self.iren.GetEventPosition()
+        self.imageviewer.GetRenderer().SetDisplayPoint(position[0], position[1], 0)
+        self.imageviewer.GetRenderer().DisplayToWorld()
+        world_position = self.imageviewer.GetRenderer().GetWorldPoint()
+        bounds = self.imageviewer.GetImageActor().GetBounds()
+        if 0 <= world_position[0] <= bounds[1] and 0 <= world_position[1] <= bounds[3]:
+            index_x = round(world_position[0] / self.spacing[0])
+            index_y = round(world_position[1] / self.spacing[1])
+            # image_data = np.flip(np.flip(self.image_data_data, axis=1), axis=2).transpose(2, 1, 0)
+            value = self.image_data[self.imageviewer.GetSliceMax() - self.imageviewer.GetSlice(), self.image_data.shape[2] - index_y, index_x]
+            self.value_label.setText(str(value))
+
     ###左键选点功能函数###
     def left_pressed(self, obj, ev):
-        clickpos = self.iren.GetEventPosition()
-        picker = vtk.vtkPointPicker()
-        picker.Pick(clickpos[0], clickpos[1], 0, self.ren)
+        if self.select_flag:
+            clickpos = self.iren.GetEventPosition()
+            self.imageviewer.GetRenderer().SetDisplayPoint(clickpos[0], clickpos[1], 0)
+            self.imageviewer.GetRenderer().DisplayToWorld()
+            world_position = self.imageviewer.GetRenderer().GetWorldPoint()
+            point = [world_position[0] / self.spacing[0], world_position[1] / self.spacing[1], self.imageviewer.GetSlice()]
+            point_z = [x[2] for x in self.seedpt3d_list]
+            if point[2] not in point_z:
+                self.seedpt3d_list.append(point)
+            self.points.SetPoint(0, [clickpos[0], clickpos[1], 0])
+            self.pd.SetPoints(self.points)
+            self.mapper.SetInputData(self.pd)
+            self.actor.SetMapper(self.mapper)
+            self.actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Black'))
+            self.actor.GetProperty().SetPointSize(4)
+            self.imageviewer.GetRenderer().AddViewProp(self.actor)
+            self.iren.Initialize()
+            self.imageviewer.Render()
+            self.iren.Start()
         # self.NewPickedActor = picker.GetActor()
         # if self.NewPickedActor:
         #     if self.LastPickedActor:
@@ -601,11 +653,12 @@ class MainWindow(QMainWindow):
     def save_patch_button_clicked(self):
         save_path = QFileDialog.getExistingDirectory(self, "保存路径", "\home", QFileDialog.ShowDirsOnly)
         if len(save_path) > 0:
+            self.info_browser.insertPlainText("pactch保存中...\n")
             if self.seedname == 'left leg':
                 leg = 'l'
             if self.seedname == 'right leg':
                 leg = 'r'
-            patch_dir = os.path.join(save_path, self.dir_name)
+            patch_dir = os.path.join(save_path, self.dir_name + "_jpeg")
             if not os.path.exists(patch_dir):
                 os.makedirs(patch_dir)
             for center in self.vessel_center:
@@ -613,6 +666,15 @@ class MainWindow(QMainWindow):
                 patch_img_name = "{}_{}.jpeg".format(leg, slice_num)
                 patch_path = os.path.join(patch_dir, patch_img_name)
                 cv.imwrite(patch_path, np.uint8(self.patch_data[:, :, slice_num]))
+            patch_dir = os.path.join(save_path, self.dir_name + "_txt")
+            if not os.path.exists(patch_dir):
+                os.makedirs(patch_dir)
+            for center in self.vessel_center:
+                slice_num = center[2]
+                patch_img_name = "{}_{}.txt".format(leg, slice_num)
+                patch_path = os.path.join(patch_dir, patch_img_name)
+                np.savetxt(patch_path, np.int(self.patch_data[:, :, slice_num]), fmt='%d', delimiter=' ')
+            self.info_browser.insertPlainText("patch保存完成!\n")
 
     ###导入模型按钮功能函数###
     @Slot()
@@ -637,13 +699,15 @@ class MainWindow(QMainWindow):
     ###信息框自动滚动###
     @Slot()
     def info_browser_text_changed(self):
+        self.vtkWidget.GetRenderWindow().Finalize()
         self.info_browser.moveCursor(QTextCursor().End)
+
+    def closeEvent(self, event):
+        self.vtkWidget.GetRenderWindow().WaitForCompletion()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("windowsxp")
     window = MainWindow()
-
     sys.exit(app.exec_())
-    exit()
